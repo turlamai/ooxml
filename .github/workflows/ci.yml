@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Keep the newest check for each PR, without cancelling main or other workflows.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Racket
+        uses: Bogdanp/setup-racket@v1.12
+        with:
+          version: 'stable'
+      - name: Reject checked-in generated Scribble output
+        shell: bash
+        run: |
+          if git ls-files -- 'ooxml/doc/**' | grep -q .; then
+            echo "::error::Generated documentation under ooxml/doc/ must not be committed."
+            exit 1
+          fi
+      - name: Install package
+        run: raco pkg install --auto --link "$(pwd)"
+      - name: Run tests
+        run: raco test -p ooxml
+      - name: Run documented quickstart
+        run: racket ooxml/examples/quickstart.rkt
+      - name: Build Scribble manual and verify package dependencies
+        run: raco setup --check-pkg-deps -l ooxml
